@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Patient Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background: #f4f6f9; }
+.header {
+  background: linear-gradient(90deg,#0f2027,#2c5364);
+  color: white; padding: 20px;
+  font-size: 24px; font-weight: 600;
+}
+.stat-card {
+  background: linear-gradient(135deg,#000428,#004e92);
+  color: white; border-radius: 12px;
+  padding: 20px; text-align: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+.section {
+  background: white; padding: 20px;
+  border-radius: 12px; margin-top: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.modal-overlay {
+  position: fixed; top:0; left:0;
+  width:100%; height:100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 1050;
+  display: flex; align-items: center; justify-content: center;
+}
+.tab-btn {
+  background: none; border: none;
+  padding: 8px 16px; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-weight: 500; color: #666;
+}
+.tab-btn.active {
+  border-bottom: 2px solid #0d6efd;
+  color: #0d6efd;
+}
+.dept-card {
+  border: 1px solid #dee2e6;
+  border-radius: 10px; padding: 14px;
+  cursor: pointer; transition: 0.2s;
+  text-align: center;
+}
+.dept-card:hover { background: #e8f0fe; border-color: #0d6efd; }
+.dept-card.selected { background: #e8f0fe; border-color: #0d6efd; }
+.slot-btn {
+  font-size: 12px; padding: 4px 8px;
+  margin: 2px; border-radius: 6px;
+  border: 1px solid #0d6efd;
+  background: white; color: #0d6efd;
+  cursor: pointer;
+}
+.slot-btn:hover, .slot-btn.selected { background: #0d6efd; color: white; }
+</style>
+</head>
+
+<body>
+<div id="app">
+
+<!-- HEADER -->
+<div class="header d-flex justify-content-between align-items-center">
+  <div>🏥 Patient Dashboard &nbsp;<small style="font-size:16px;opacity:0.8">Welcome, [[ patientName ]]</small></div>
+  <button class="btn btn-danger" @click="logout">Logout</button>
+</div>
+
+<div class="container mt-4">
+
+  <!-- STATS -->
+  <div class="row text-center g-3">
+    <div class="col-md-4" v-for="card in stats" :key="card.label">
+      <div class="stat-card">
+        <h2>[[ card.value ]]</h2>
+        <p class="mb-0">[[ card.label ]]</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mt-2">
+
+    <!-- LEFT: main content -->
+    <div class="col-md-8">
+
+      <!-- TABS -->
+      <div class="section">
+        <div class="d-flex mb-3 border-bottom flex-wrap">
+          <button class="tab-btn" :class="{active: tab==='upcoming'}"  @click="tab='upcoming'">Upcoming</button>
+          <button class="tab-btn" :class="{active: tab==='history'}"   @click="tab='history'">History</button>
+          <button class="tab-btn" :class="{active: tab==='doctors'}"   @click="tab='doctors'; loadDoctors()">Find Doctors</button>
+          <button class="tab-btn" :class="{active: tab==='depts'}"     @click="tab='depts'">Departments</button>
+        </div>
+
+        <!-- UPCOMING APPOINTMENTS -->
+        <div v-if="tab==='upcoming'">
+          <p v-if="upcoming.length===0" class="text-muted">No upcoming appointments.</p>
+          <div v-for="a in upcoming" :key="a.id"
+               class="border p-3 mb-2 rounded d-flex justify-content-between align-items-center">
+            <div>
+              <b>#[[ a.id ]]</b> &nbsp;
+              <span class="badge bg-warning text-dark">booked</span><br>
+              🩺 <b>[[ a.doctor ]]</b> &nbsp;
+              <span class="text-muted small">[[ a.spec ]]</span><br>
+              📅 [[ a.date ]] &nbsp; 🕐 [[ a.time ]]<br>
+              <small class="text-muted" v-if="a.reason">Reason: [[ a.reason ]]</small>
+            </div>
+            <button class="btn btn-sm btn-outline-danger"
+                    @click="cancelAppt(a.id)">Cancel</button>
+          </div>
+        </div>
+
+        <!-- PAST HISTORY -->
+        <div v-if="tab==='history'">
+          <p v-if="past.length===0" class="text-muted">No past appointments yet.</p>
+          <div v-for="a in past" :key="a.id"
+               class="border p-3 mb-2 rounded">
+            <div class="d-flex justify-content-between">
+              <div>
+                <b>#[[ a.id ]]</b> &nbsp;
+                <span class="badge" :class="statusBadge(a.status)">[[ a.status ]]</span>
+              </div>
+              <small class="text-muted">📅 [[ a.date ]]</small>
+            </div>
+            <div class="mt-1">
+              🩺 <b>[[ a.doctor ]]</b>
+              <span class="text-muted small ms-1">[[ a.spec ]]</span>
+            </div>
+            <div v-if="a.diagnosis" class="mt-2 ps-2 border-start border-primary">
+              <small><b>Diagnosis:</b> [[ a.diagnosis ]]</small><br>
+              <small><b>Prescription:</b> [[ a.prescription || '—' ]]</small><br>
+              <small v-if="a.notes"><b>Notes:</b> [[ a.notes ]]</small><br>
+              <small v-if="a.next_visit" class="text-success"><b>Next Visit:</b> [[ a.next_visit ]]</small>
+            </div>
+            <div v-else class="text-muted mt-1"><small>No treatment recorded yet.</small></div>
+          </div>
+        </div>
+
+        <!-- FIND DOCTORS -->
+        <div v-if="tab==='doctors'">
+          <div class="d-flex gap-2 mb-3">
+            <input v-model="doctorSearch" class="form-control"
+                   placeholder="Search by name or specialization"
+                   @keyup.enter="loadDoctors">
+            <button class="btn btn-primary px-3" @click="loadDoctors">Search</button>
+          </div>
+
+          <p v-if="doctors.length===0" class="text-muted">No doctors found.</p>
+
+          <div v-for="d in doctors" :key="d.id" class="border rounded p-3 mb-2">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <b>Dr. [[ d.name ]]</b>
+                <span class="badge bg-info text-dark ms-2">[[ d.specialization ]]</span><br>
+                <small class="text-muted">
+                  [[ d.department || '' ]]
+                  <span v-if="d.phone"> &nbsp;📞 [[ d.phone ]]</span>
+                </small>
+              </div>
+              <button class="btn btn-sm btn-outline-primary"
+                      @click="openBook(d)">Book</button>
+            </div>
+
+            <!-- availability slots -->
+            <div class="mt-2" v-if="d.availability.length > 0">
+              <small class="text-muted">Available slots (next 7 days):</small><br>
+              <span v-for="s in d.availability" :key="s.slot_id">
+                <button class="slot-btn"
+                        :class="{selected: selectedSlot && selectedSlot.slot_id===s.slot_id}"
+                        @click="selectSlot(d, s)">
+                  [[ s.date ]] [[ s.start ]]
+                </button>
+              </span>
+            </div>
+            <div v-else class="mt-1">
+              <small class="text-muted">No slots available this week.</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- DEPARTMENTS -->
+        <div v-if="tab==='depts'">
+          <p v-if="departments.length===0" class="text-muted">Loading departments...</p>
+          <div class="row g-3">
+            <div class="col-md-4" v-for="d in departments" :key="d.id">
+              <div class="dept-card"
+                   :class="{selected: selectedDept===d.name}"
+                   @click="filterByDept(d.name)">
+                <h6 class="mb-1">🏥 [[ d.name ]]</h6>
+                <small class="text-muted">[[ d.description ]]</small><br>
+                <span class="badge mt-1"
+                      :class="d.doctor_count > 0 ? 'bg-primary' : 'bg-secondary'">
+                  [[ d.doctor_count ]] doctor(s)
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT: profile + actions -->
+    <div class="col-md-4">
+
+      <div class="section">
+        <h5>Quick Actions</h5>
+        <button class="btn btn-outline-primary w-100 mb-2"
+                @click="tab='doctors'; loadDoctors()">
+          🔍 Find a Doctor
+        </button>
+        <button class="btn btn-outline-success w-100 mb-2"
+                @click="tab='depts'">
+          🏥 Browse Departments
+        </button>
+        <button class="btn btn-outline-info w-100 mb-2"
+                @click="showProfile=true">
+          ✏️ Edit Profile
+        </button>
+        <button class="btn btn-outline-warning w-100 mb-2"
+                @click="exportCSV"
+                :disabled="exporting">
+          <span v-if="exporting">⏳ Exporting...</span>
+          <span v-else>📥 Export Treatment History</span>
+        </button>
+      </div>
+
+      <div class="section">
+        <h5>My Profile</h5>
+        <p class="mb-1">👤 <b>[[ profile.name ]]</b></p>
+        <p class="mb-1 text-muted small">📧 [[ profile.email ]]</p>
+        <p class="mb-1 text-muted small">📞 [[ profile.phone || 'Not set' ]]</p>
+        <p class="mb-0 text-muted small">🏠 [[ profile.address || 'Not set' ]]</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- BOOK APPOINTMENT MODAL -->
+<div v-if="showBook" class="modal-overlay" @click.self="showBook=false">
+  <div class="modal-dialog m-0" style="width:100%;max-width:480px">
+    <div class="modal-content p-4">
+      <h5 class="mb-1">Book Appointment</h5>
+      <p class="text-muted mb-3">Dr. <b>[[ bookForm.doctorName ]]</b> — [[ bookForm.spec ]]</p>
+
+      <label class="form-label fw-semibold">Date</label>
+      <input type="date" v-model="bookForm.date" class="form-control mb-2"
+             :min="today" :max="maxDate">
+
+      <label class="form-label fw-semibold">Time</label>
+      <input type="time" v-model="bookForm.time" class="form-control mb-2">
+
+      <label class="form-label fw-semibold">Reason for visit</label>
+      <textarea v-model="bookForm.reason" class="form-control mb-3" rows="2"
+                placeholder="Brief reason (optional)"></textarea>
+
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary flex-fill" @click="confirmBook">Confirm Booking</button>
+        <button class="btn btn-secondary flex-fill" @click="showBook=false">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT PROFILE MODAL -->
+<div v-if="showProfile" class="modal-overlay" @click.self="showProfile=false">
+  <div class="modal-dialog m-0" style="width:100%;max-width:480px">
+    <div class="modal-content p-4">
+      <h5 class="mb-3">✏️ Edit Profile</h5>
+
+      <label class="form-label fw-semibold">Full Name</label>
+      <input v-model="editProfile.name" class="form-control mb-2">
+
+      <label class="form-label fw-semibold">Email</label>
+      <input v-model="editProfile.email" type="email" class="form-control mb-2">
+
+      <label class="form-label fw-semibold">Phone</label>
+      <input v-model="editProfile.phone" class="form-control mb-2">
+
+      <label class="form-label fw-semibold">Address</label>
+      <textarea v-model="editProfile.address" class="form-control mb-3" rows="2"></textarea>
+
+      <div class="d-flex gap-2">
+        <button class="btn btn-success flex-fill" @click="saveProfile">Save</button>
+        <button class="btn btn-secondary flex-fill" @click="showProfile=false">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<script>
+new Vue({
+  el: "#app",
+  delimiters: ['[[', ']]'],
+  data: {
+    // read from localStorage — set by login.js after successful login
+    patientId:   parseInt(localStorage.getItem("patient_id")) || 0,
+    patientName: localStorage.getItem("patient_name") || "Patient",
+    token:       localStorage.getItem("token") || "",
+
+    stats:       [],
+    upcoming:    [],
+    past:        [],
+    doctors:     [],
+    departments: [],
+    profile:     { name:"", email:"", phone:"", address:"" },
+
+    tab:          "upcoming",
+    doctorSearch: "",
+    selectedDept: "",
+    selectedSlot: null,
+
+    showBook:    false,
+    showProfile: false,
+
+    bookForm: {
+      doctorId: null, doctorName: "", spec: "",
+      date: "", time: "", reason: "", slotId: null
+    },
+    editProfile: { name:"", email:"", phone:"", address:"" },
+
+    exporting: false,
+    today:   new Date().toISOString().split("T")[0],
+    maxDate: new Date(Date.now() + 7*86400000).toISOString().split("T")[0],
+  },
+
+  created() {
+    this.loadDashboard()
+    this.loadDepartments()
+  },
+
+  methods: {
+
+    loadDashboard() {
+      fetch("/patient/dashboard_data/" + this.patientId, {
+        headers: { "Authorization": "Bearer " + this.token }
+      })
+      .then(r => r.json())
+      .then(d => {
+        this.stats      = d.stats
+        this.upcoming   = d.upcoming
+        this.past       = d.past
+        this.profile    = d.patient
+        this.patientName = d.patient.name
+        // pre-fill edit form
+        this.editProfile = { ...d.patient }
+      })
+      .catch(() => showToast("Could not load dashboard.", "danger"))
+    },
+
+    loadDepartments() {
+      fetch("/patient/departments")
+        .then(r => r.json())
+        .then(d => { this.departments = d })
+    },
+
+    loadDoctors(searchOverride) {
+      let url = "/patient/doctors"
+      const term = searchOverride !== undefined ? searchOverride : this.doctorSearch
+      if (term.trim())
+        url += "?specialization=" + encodeURIComponent(term.trim())
+
+      fetch(url)
+        .then(r => r.json())
+        .then(d => { this.doctors = d })
+    },
+
+    filterByDept(deptName) {
+      this.selectedDept = deptName
+      this.doctorSearch = deptName
+      this.tab = "doctors"
+      this.loadDoctors(deptName)
+    },
+
+    selectSlot(doctor, slot) {
+      this.selectedSlot    = slot
+      this.bookForm.doctorId   = doctor.id
+      this.bookForm.doctorName = doctor.name
+      this.bookForm.spec       = doctor.specialization
+      this.bookForm.date       = slot.date
+      this.bookForm.time       = slot.start
+      this.bookForm.slotId     = slot.slot_id
+      this.showBook = true
+    },
+
+    openBook(doctor) {
+      this.selectedSlot    = null
+      this.bookForm.doctorId   = doctor.id
+      this.bookForm.doctorName = doctor.name
+      this.bookForm.spec       = doctor.specialization
+      this.bookForm.date       = this.today
+      this.bookForm.time       = "09:00"
+      this.bookForm.slotId     = null
+      this.showBook = true
+    },
+
+    confirmBook() {
+      if (!this.bookForm.date || !this.bookForm.time) {
+        showToast("Please select a date and time.", "info")
+        return
+      }
+      fetch("/patient/book", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json",
+                   "Authorization": "Bearer " + this.token },
+        body: JSON.stringify({
+          patient_id: this.patientId,
+          doctor_id:  this.bookForm.doctorId,
+          date:       this.bookForm.date,
+          time:       this.bookForm.time,
+          reason:     this.bookForm.reason,
+          slot_id:    this.bookForm.slotId,
+        })
+      })
+      .then(r => r.json())
+      .then(d => {
+        showToast(d.msg, d.msg && (d.msg.toLowerCase().includes('error') || d.msg.toLowerCase().includes('fail') || d.msg.toLowerCase().includes('invalid')) ? 'danger' : 'success')
+        this.showBook   = false
+        this.selectedSlot = null
+        this.loadDashboard()
+        this.loadDoctors()
+      })
+    },
+
+    cancelAppt(id) {
+      if (!confirm("Cancel this appointment?")) return
+      fetch("/patient/cancel/" + id, {
+        method:  "POST",
+        headers: { "Authorization": "Bearer " + this.token }
+      })
+      .then(r => r.json())
+      .then(d => {
+        showToast(d.msg, d.msg && (d.msg.toLowerCase().includes('error') || d.msg.toLowerCase().includes('fail') || d.msg.toLowerCase().includes('invalid')) ? 'danger' : 'success')
+        this.loadDashboard()
+      })
+    },
+
+    saveProfile() {
+      fetch("/patient/profile/" + this.patientId, {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json",
+                   "Authorization": "Bearer " + this.token },
+        body: JSON.stringify(this.editProfile)
+      })
+      .then(r => r.json())
+      .then(d => {
+        showToast(d.msg, d.msg && (d.msg.toLowerCase().includes('error') || d.msg.toLowerCase().includes('fail') || d.msg.toLowerCase().includes('invalid')) ? 'danger' : 'success')
+        this.showProfile = false
+        this.loadDashboard()
+      })
+    },
+
+    statusBadge(status) {
+      return {
+        "bg-warning text-dark": status === "booked",
+        "bg-success":           status === "completed",
+        "bg-danger":            status === "cancelled",
+      }
+    },
+
+    exportCSV() {
+      this.exporting = true
+      fetch("/patient/export_csv/" + this.patientId, {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + this.token }
+      })
+      .then(r => r.json())
+      .then(d => {
+        showToast(d.msg, d.msg && (d.msg.toLowerCase().includes('error') || d.msg.toLowerCase().includes('fail') || d.msg.toLowerCase().includes('invalid')) ? 'danger' : 'success')
+        this.exporting = false
+      })
+      .catch(() => {
+        showToast("Export failed. Please try again.", "danger")
+        this.exporting = false
+      })
+    },
+
+    logout() {
+      localStorage.clear()
+      window.location.href = "/"
+    }
+  }
+})
+</script>
+
+<script src="/static/js/toast.js"></script>
+</body>
+</html>

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Admin Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background: #f4f6f9; }
+.header {
+  background: linear-gradient(90deg,#0f2027,#2c5364);
+  color: white; padding: 20px;
+  font-size: 24px; font-weight: 600;
+}
+.stat-card {
+  background: linear-gradient(135deg,#000428,#004e92);
+  color: white; border-radius: 12px;
+  padding: 20px; text-align: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+.section {
+  background: white; padding: 20px;
+  border-radius: 12px; margin-top: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+/* FIX: modal overlay so it actually dims the background */
+.modal-overlay {
+  position: fixed; top:0; left:0;
+  width:100%; height:100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 1050;
+  display: flex; align-items: center; justify-content: center;
+}
+</style>
+</head>
+
+<body>
+<div id="app">
+
+<!-- HEADER -->
+<div class="header d-flex justify-content-between align-items-center">
+  <div>🏥 Admin Dashboard</div>
+  <button class="btn btn-danger" @click="logout">Logout</button>
+</div>
+
+<div class="container mt-4">
+
+  <!-- STATS -->
+  <div class="row text-center g-3">
+    <div class="col-md-4" v-for="card in stats" :key="card.label">
+      <div class="stat-card">
+        <h2>[[ card.value ]]</h2>
+        <p class="mb-0">[[ card.label ]]</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN ROW -->
+  <div class="row mt-2">
+
+    <!-- LEFT: appointments -->
+    <div class="col-md-8">
+
+      <div class="section">
+        <h5>Upcoming Appointments</h5>
+        <p v-if="upcoming.length === 0" class="text-muted">No upcoming appointments.</p>
+        <div v-for="a in upcoming" :key="a.id"
+             class="border p-3 mb-2 rounded d-flex justify-content-between align-items-center">
+          <div>
+            <b>#[[ a.id ]]</b> &nbsp;
+            <span class="badge bg-primary">[[ a.status ]]</span><br>
+            👤 [[ a.patient ]] &nbsp;|&nbsp; 🩺 [[ a.doctor ]]<br>
+            📅 [[ a.date ]] &nbsp; 🕐 [[ a.time ]]
+          </div>
+          <button class="btn btn-sm btn-outline-danger"
+                  @click="deleteAppointment(a.id)">Delete</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h5>Recent Appointments</h5>
+        <p v-if="recent.length === 0" class="text-muted">No recent appointments.</p>
+        <div v-for="a in recent" :key="a.id"
+             class="border p-3 mb-2 rounded d-flex justify-content-between align-items-center">
+          <div>
+            <b>#[[ a.id ]]</b> &nbsp;
+            <span class="badge"
+              :class="{
+                'bg-success': a.status==='completed',
+                'bg-warning text-dark': a.status==='booked',
+                'bg-danger': a.status==='cancelled'
+              }">[[ a.status ]]</span><br>
+            👤 [[ a.patient ]] &nbsp;|&nbsp; 🩺 [[ a.doctor ]]
+          </div>
+          <button class="btn btn-sm btn-outline-danger"
+                  @click="deleteAppointment(a.id)">Delete</button>
+        </div>
+      </div>
+
+      <!-- DOCTORS LIST (shown when clicked "View All Doctors") -->
+      <div class="section" v-if="doctors.length > 0">
+        <h5>All Doctors</h5>
+        <table class="table table-hover">
+          <thead><tr>
+            <th>#</th><th>Name</th><th>Specialization</th><th>Phone</th><th>Status</th><th>Action</th>
+          </tr></thead>
+          <tbody>
+            <tr v-for="d in doctors" :key="d.id">
+              <td>[[ d.id ]]</td>
+              <td>[[ d.name ]]</td>
+              <td>[[ d.specialization ]]</td>
+              <td>[[ d.phone || '—' ]]</td>
+              <td>
+                <span class="badge" :class="d.is_active ? 'bg-success' : 'bg-secondary'">
+                  [[ d.is_active ? 'Active' : 'Inactive' ]]
+                </span>
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-danger"
+                        @click="deactivateDoctor(d.id)">Deactivate</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PATIENTS LIST -->
+      <div class="section" v-if="patients.length > 0">
+        <h5>All Patients</h5>
+        <table class="table table-hover">
+          <thead><tr>
+            <th>#</th><th>Name</th><th>Email</th><th>Phone</th>
+          </tr></thead>
+          <tbody>
+            <tr v-for="p in patients" :key="p.id">
+              <td>[[ p.id ]]</td>
+              <td>[[ p.name ]]</td>
+              <td>[[ p.email ]]</td>
+              <td>[[ p.phone || '—' ]]</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SEARCH RESULTS -->
+      <div class="section" v-if="searchResults">
+        <h5>Search Results for "[[ lastQuery ]]"</h5>
+
+        <div v-if="searchResults.doctors.length > 0">
+          <h6 class="text-primary">Doctors</h6>
+          <div v-for="d in searchResults.doctors" :key="'d'+d.id"
+               class="border rounded p-2 mb-1">
+            🩺 <b>[[ d.name ]]</b> — [[ d.specialization ]]
+            <span class="text-muted ms-2">[[ d.phone ]]</span>
+          </div>
+        </div>
+
+        <div v-if="searchResults.patients.length > 0" class="mt-3">
+          <h6 class="text-success">Patients</h6>
+          <div v-for="p in searchResults.patients" :key="'p'+p.id"
+               class="border rounded p-2 mb-1">
+            👤 <b>[[ p.name ]]</b> — [[ p.email ]]
+          </div>
+        </div>
+
+        <p v-if="searchResults.doctors.length===0 && searchResults.patients.length===0"
+           class="text-muted">No results found.</p>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: actions + search -->
+    <div class="col-md-4">
+
+      <div class="section">
+        <h5>Quick Actions</h5>
+        <button class="btn btn-outline-primary w-100 mb-2" @click="showAddDoctor=true">
+          ➕ Add New Doctor
+        </button>
+        <button class="btn btn-outline-success w-100 mb-2" @click="loadDoctors">
+          👨‍⚕️ View All Doctors
+        </button>
+        <button class="btn btn-outline-info w-100 mb-2" @click="loadPatients">
+          👤 View All Patients
+        </button>
+      </div>
+
+      <div class="section">
+        <h5>Search</h5>
+        <input v-model="searchQuery" class="form-control mb-2"
+               placeholder="Search by name or specialization"
+               @keyup.enter="doSearch">
+        <button class="btn btn-primary w-100" @click="doSearch">Search</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ADD DOCTOR MODAL — FIX: proper overlay + added username/password fields -->
+<div v-if="showAddDoctor" class="modal-overlay" @click.self="showAddDoctor=false">
+  <div class="modal-dialog m-0" style="width:100%;max-width:480px">
+    <div class="modal-content p-4">
+      <h5 class="mb-3">Add New Doctor</h5>
+
+      <input v-model="newDoctor.name"           class="form-control mb-2" placeholder="Full Name *">
+      <input v-model="newDoctor.specialization" class="form-control mb-2" placeholder="Specialization *">
+      <input v-model="newDoctor.phone"          class="form-control mb-2" placeholder="Phone">
+      <hr>
+      <small class="text-muted">Login credentials for the doctor</small>
+      <input v-model="newDoctor.username" class="form-control mb-2 mt-1" placeholder="Username *">
+      <input v-model="newDoctor.email"    class="form-control mb-2" placeholder="Email">
+      <input v-model="newDoctor.password" class="form-control mb-2" placeholder="Password (default: Doctor@1234)" type="password">
+
+      <div class="d-flex gap-2 mt-2">
+        <button class="btn btn-success flex-fill" @click="addDoctor">Save</button>
+        <button class="btn btn-secondary flex-fill" @click="showAddDoctor=false">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<script>
+new Vue({
+  el: "#app",
+  delimiters: ['[[',']]'],
+  data: {
+    stats:         [],
+    upcoming:      [],
+    recent:        [],
+    doctors:       [],
+    patients:      [],
+    searchQuery:   "",
+    searchResults: null,
+    lastQuery:     "",
+    showAddDoctor: false,
+    newDoctor: {
+      name: "", specialization: "", phone: "",
+      username: "", email: "", password: ""
+    }
+  },
+
+  created() {
+    this.loadDashboard()
+  },
+
+  methods: {
+
+    // FIX: correct URL is now /admin/dashboard_data
+    loadDashboard() {
+      fetch("/admin/dashboard_data")
+        .then(res => res.json())
+        .then(data => {
+          this.stats    = data.stats
+          this.upcoming = data.upcoming
+          this.recent   = data.recent
+        })
+        .catch(() => showToast("Could not load dashboard data.", "danger"))
+    },
+
+    addDoctor() {
+      if (!this.newDoctor.name || !this.newDoctor.specialization || !this.newDoctor.username) {
+        showToast("Name, specialization and username are required.", "danger")
+        return
+      }
+      fetch("/admin/add_doctor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.newDoctor)
+      })
+      .then(res => res.json())
+      .then(data => {
+        showToast(data.msg, data.msg && (data.msg.toLowerCase().includes('error') || data.msg.toLowerCase().includes('fail') || data.msg.toLowerCase().includes('invalid') || data.msg.toLowerCase().includes('taken') || data.msg.toLowerCase().includes('already')) ? 'danger' : 'success')
+        this.showAddDoctor = false
+        // reset form
+        this.newDoctor = { name:"", specialization:"", phone:"", username:"", email:"", password:"" }
+        this.loadDashboard()
+        this.loadDoctors()
+      })
+    },
+
+    deleteAppointment(id) {
+      if (!confirm("Delete this appointment?")) return
+      fetch("/admin/delete_appointment/" + id, { method: "DELETE" })
+        .then(() => this.loadDashboard())
+    },
+
+    // FIX: fetch JSON and render in page instead of redirecting
+    loadDoctors() {
+      fetch("/admin/doctors")
+        .then(res => res.json())
+        .then(data => {
+          this.doctors  = data
+          this.patients = []          // hide patients table when showing doctors
+          this.searchResults = null
+        })
+    },
+
+    loadPatients() {
+      fetch("/admin/patients")
+        .then(res => res.json())
+        .then(data => {
+          this.patients = data
+          this.doctors  = []
+          this.searchResults = null
+        })
+    },
+
+    deactivateDoctor(id) {
+      if (!confirm("Deactivate this doctor?")) return
+      fetch("/admin/delete_doctor/" + id, { method: "DELETE" })
+        .then(res => res.json())
+        .then(data => {
+          showToast(data.msg, data.msg && (data.msg.toLowerCase().includes('error') || data.msg.toLowerCase().includes('fail') || data.msg.toLowerCase().includes('invalid') || data.msg.toLowerCase().includes('taken') || data.msg.toLowerCase().includes('already')) ? 'danger' : 'success')
+          this.loadDoctors()
+        })
+    },
+
+    // FIX: show results in UI instead of console.log
+    doSearch() {
+      if (!this.searchQuery.trim()) return
+      this.lastQuery = this.searchQuery
+      fetch("/admin/search?q=" + encodeURIComponent(this.searchQuery))
+        .then(res => res.json())
+        .then(data => {
+          this.searchResults = data
+          this.doctors  = []
+          this.patients = []
+        })
+    },
+
+    logout() {
+      localStorage.clear()
+      window.location.href = "/"
+    }
+
+  }
+})
+</script>
+
+<script src="/static/js/toast.js"></script>
+</body>
+</html>

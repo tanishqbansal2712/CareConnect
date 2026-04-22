@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Doctor Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background: #f4f6f9; }
+.header {
+  background: linear-gradient(90deg,#0f2027,#2c5364);
+  color: white; padding: 20px;
+  font-size: 24px; font-weight: 600;
+}
+.stat-card {
+  background: linear-gradient(135deg,#000428,#004e92);
+  color: white; border-radius: 12px;
+  padding: 20px; text-align: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+.section {
+  background: white; padding: 20px;
+  border-radius: 12px; margin-top: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.modal-overlay {
+  position: fixed; top:0; left:0;
+  width:100%; height:100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 1050;
+  display: flex; align-items: center; justify-content: center;
+}
+.tab-btn {
+  background: none; border: none;
+  padding: 8px 16px; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-weight: 500; color: #666;
+}
+.tab-btn.active {
+  border-bottom: 2px solid #0d6efd;
+  color: #0d6efd;
+}
+</style>
+</head>
+
+<body>
+<div id="app">
+
+<!-- HEADER -->
+<div class="header d-flex justify-content-between align-items-center">
+  <div>🩺 Doctor Dashboard &nbsp;<small style="font-size:16px;opacity:0.8">[[ doctorName ]]</small></div>
+  <button class="btn btn-danger" @click="logout">Logout</button>
+</div>
+
+<div class="container mt-4">
+
+  <!-- STATS -->
+  <div class="row text-center g-3">
+    <div class="col-md-4" v-for="card in stats" :key="card.label">
+      <div class="stat-card">
+        <h2>[[ card.value ]]</h2>
+        <p class="mb-0">[[ card.label ]]</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mt-2">
+
+    <!-- LEFT: main content -->
+    <div class="col-md-8">
+
+      <!-- TABS: Today / This Week / All -->
+      <div class="section">
+        <div class="d-flex mb-3 border-bottom">
+          <button class="tab-btn" :class="{active: tab==='today'}"   @click="tab='today'">Today</button>
+          <button class="tab-btn" :class="{active: tab==='week'}"    @click="tab='week'">This Week</button>
+          <button class="tab-btn" :class="{active: tab==='all'}"     @click="tab='all'">All Appointments</button>
+          <button class="tab-btn" :class="{active: tab==='patients'}"@click="tab='patients'">My Patients</button>
+        </div>
+
+        <!-- TODAY -->
+        <div v-if="tab==='today'">
+          <p v-if="todayAppts.length===0" class="text-muted">No appointments today.</p>
+          <div v-for="a in todayAppts" :key="a.id"
+               class="border p-3 mb-2 rounded d-flex justify-content-between align-items-center">
+            <div>
+              <b>#[[ a.id ]]</b> &nbsp;
+              <span class="badge" :class="statusBadge(a.status)">[[ a.status ]]</span><br>
+              👤 [[ a.patient ]] &nbsp; 🕐 [[ a.time ]]<br>
+              <small class="text-muted">[[ a.reason || 'No reason provided' ]]</small>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-success" @click="openComplete(a)">✔ Complete</button>
+              <button class="btn btn-sm btn-outline-danger" @click="cancelAppt(a.id)">✖ Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- THIS WEEK -->
+        <div v-if="tab==='week'">
+          <p v-if="weekAppts.length===0" class="text-muted">No upcoming appointments this week.</p>
+          <div v-for="a in weekAppts" :key="a.id"
+               class="border p-3 mb-2 rounded d-flex justify-content-between align-items-center">
+            <div>
+              <b>#[[ a.id ]]</b> &nbsp;
+              <span class="badge" :class="statusBadge(a.status)">[[ a.status ]]</span><br>
+              👤 [[ a.patient ]] &nbsp; 📅 [[ a.date ]] &nbsp; 🕐 [[ a.time ]]<br>
+              <small class="text-muted">[[ a.reason || 'No reason provided' ]]</small>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-success" @click="openComplete(a)">✔ Complete</button>
+              <button class="btn btn-sm btn-outline-danger" @click="cancelAppt(a.id)">✖ Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ALL APPOINTMENTS -->
+        <div v-if="tab==='all'">
+          <p v-if="allAppts.length===0" class="text-muted">No appointments found.</p>
+          <div v-for="a in allAppts" :key="a.id"
+               class="border p-3 mb-2 rounded d-flex justify-content-between align-items-center">
+            <div>
+              <b>#[[ a.id ]]</b> &nbsp;
+              <span class="badge" :class="statusBadge(a.status)">[[ a.status ]]</span><br>
+              👤 [[ a.patient ]] &nbsp; 📅 [[ a.date ]] &nbsp; 🕐 [[ a.time ]]
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-info"
+                      @click="viewHistory(a.patient_id, a.patient)">History</button>
+              <button v-if="a.status==='booked'" class="btn btn-sm btn-success"
+                      @click="openComplete(a)">✔ Complete</button>
+              <button v-if="a.status==='booked'" class="btn btn-sm btn-outline-danger"
+                      @click="cancelAppt(a.id)">✖ Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MY PATIENTS -->
+        <div v-if="tab==='patients'">
+          <p v-if="patients.length===0" class="text-muted">No patients yet.</p>
+          <div v-for="p in patients" :key="p.id"
+               class="border p-3 mb-2 rounded d-flex justify-content-between align-items-center">
+            <div>
+              👤 <b>[[ p.name ]]</b><br>
+              <small class="text-muted">[[ p.email ]]</small>
+            </div>
+            <button class="btn btn-sm btn-outline-primary"
+                    @click="viewHistory(p.id, p.name)">View History</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- PATIENT HISTORY (shown when viewHistory clicked) -->
+      <div class="section" v-if="history.length > 0">
+        <h5>Treatment History — [[ historyPatientName ]]</h5>
+        <button class="btn btn-sm btn-outline-secondary mb-3" @click="history=[]">✖ Close</button>
+        <div v-for="h in history" :key="h.appointment_id"
+             class="border rounded p-3 mb-2">
+          <div class="d-flex justify-content-between">
+            <span>📅 [[ h.date ]] &nbsp; 🕐 [[ h.time ]]</span>
+            <span class="badge" :class="statusBadge(h.status)">[[ h.status ]]</span>
+          </div>
+          <div v-if="h.diagnosis" class="mt-2">
+            <small class="text-muted">Diagnosis:</small> [[ h.diagnosis ]]<br>
+            <small class="text-muted">Prescription:</small> [[ h.prescription || '—' ]]<br>
+            <small class="text-muted">Notes:</small> [[ h.notes || '—' ]]
+          </div>
+          <div v-else class="text-muted mt-1"><small>No treatment recorded yet.</small></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: quick actions + availability -->
+    <div class="col-md-4">
+
+      <div class="section">
+        <h5>Quick Actions</h5>
+        <button class="btn btn-outline-primary w-100 mb-2" @click="showAvailability=true">
+          📅 Set Availability
+        </button>
+        <button class="btn btn-outline-info w-100 mb-2" @click="tab='patients'">
+          👥 My Patients
+        </button>
+        <button class="btn btn-outline-success w-100 mb-2" @click="loadAllAppts">
+          📋 All Appointments
+        </button>
+      </div>
+
+      <!-- CURRENT AVAILABILITY -->
+      <div class="section">
+        <h5>My Availability <small class="text-muted" style="font-size:13px">(next 7 days)</small></h5>
+        <p v-if="availSlots.length===0" class="text-muted small">No slots set yet.</p>
+        <div v-for="s in availSlots" :key="s.id"
+             class="border rounded p-2 mb-1 d-flex justify-content-between align-items-center">
+          <div>
+            <b>[[ s.date ]]</b><br>
+            <small>[[ s.start ]] – [[ s.end ]]</small>
+          </div>
+          <span class="badge" :class="s.is_booked ? 'bg-warning text-dark' : 'bg-success'">
+            [[ s.is_booked ? 'Booked' : 'Free' ]]
+          </span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- COMPLETE APPOINTMENT MODAL -->
+<div v-if="showComplete" class="modal-overlay" @click.self="showComplete=false">
+  <div class="modal-dialog m-0" style="width:100%;max-width:500px">
+    <div class="modal-content p-4">
+      <h5 class="mb-1">Complete Appointment #[[ activeAppt.id ]]</h5>
+      <p class="text-muted mb-3">Patient: <b>[[ activeAppt.patient ]]</b></p>
+
+      <label class="form-label fw-semibold">Diagnosis <span class="text-danger">*</span></label>
+      <textarea v-model="treatment.diagnosis" class="form-control mb-2" rows="2"
+                placeholder="Enter diagnosis"></textarea>
+
+      <label class="form-label fw-semibold">Prescription</label>
+      <textarea v-model="treatment.prescription" class="form-control mb-2" rows="2"
+                placeholder="Medicines, dosage etc."></textarea>
+
+      <label class="form-label fw-semibold">Doctor Notes</label>
+      <textarea v-model="treatment.notes" class="form-control mb-3" rows="2"
+                placeholder="Additional notes"></textarea>
+
+      <div class="d-flex gap-2">
+        <button class="btn btn-success flex-fill" @click="submitComplete">Save & Complete</button>
+        <button class="btn btn-secondary flex-fill" @click="showComplete=false">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SET AVAILABILITY MODAL -->
+<div v-if="showAvailability" class="modal-overlay" @click.self="showAvailability=false">
+  <div class="modal-dialog m-0" style="width:100%;max-width:500px">
+    <div class="modal-content p-4">
+      <h5 class="mb-3">📅 Set Availability (Next 7 Days)</h5>
+
+      <div v-for="(slot, i) in newSlots" :key="i"
+           class="border rounded p-2 mb-2">
+        <div class="row g-2 align-items-center">
+          <div class="col-5">
+            <input type="date" v-model="slot.date" class="form-control form-control-sm"
+                   :min="today" :max="maxDate">
+          </div>
+          <div class="col-3">
+            <input type="time" v-model="slot.start" class="form-control form-control-sm">
+          </div>
+          <div class="col-3">
+            <input type="time" v-model="slot.end" class="form-control form-control-sm">
+          </div>
+          <div class="col-1">
+            <button class="btn btn-sm btn-outline-danger" @click="removeSlot(i)">✖</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-outline-primary w-100 mb-3" @click="addSlot">+ Add Slot</button>
+
+      <div class="d-flex gap-2">
+        <button class="btn btn-success flex-fill" @click="saveAvailability">Save</button>
+        <button class="btn btn-secondary flex-fill" @click="showAvailability=false">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<script>
+new Vue({
+  el: "#app",
+  delimiters: ['[[', ']]'],
+  data: {
+    // doctor id stored in localStorage after login
+    docId:      localStorage.getItem("doctor_id") || 1,
+    doctorName: localStorage.getItem("doctor_name") || "Doctor",
+
+    stats:      [],
+    todayAppts: [],
+    weekAppts:  [],
+    allAppts:   [],
+    patients:   [],
+    availSlots: [],
+    history:    [],
+    historyPatientName: "",
+
+    tab: "today",
+
+    // complete modal
+    showComplete: false,
+    activeAppt:   {},
+    treatment: { diagnosis: "", prescription: "", notes: "" },
+
+    // availability modal
+    showAvailability: false,
+    newSlots: [],
+
+    today:   new Date().toISOString().split("T")[0],
+    maxDate: new Date(Date.now() + 7*86400000).toISOString().split("T")[0],
+  },
+
+  created() {
+    this.loadDashboard()
+    this.loadAllAppts()
+    this.loadAvailability()
+  },
+
+  methods: {
+
+    loadDashboard() {
+      fetch("/doctor/dashboard_data/" + this.docId)
+        .then(r => r.json())
+        .then(d => {
+          this.stats      = d.stats
+          this.todayAppts = d.today
+          this.weekAppts  = d.week
+          this.patients   = d.patients
+          this.doctorName = d.doctor_name
+        })
+        .catch(() => showToast("Could not load dashboard.", "danger"))
+    },
+
+    loadAllAppts() {
+      fetch("/doctor/appointments/" + this.docId)
+        .then(r => r.json())
+        .then(d => { this.allAppts = d; this.tab = "all" })
+    },
+
+    loadAvailability() {
+      fetch("/doctor/availability/" + this.docId)
+        .then(r => r.json())
+        .then(d => { this.availSlots = d })
+    },
+
+    openComplete(appt) {
+      this.activeAppt = appt
+      this.treatment  = { diagnosis: "", prescription: "", notes: "" }
+      this.showComplete = true
+    },
+
+    submitComplete() {
+      if (!this.treatment.diagnosis.trim()) {
+        showToast("Diagnosis is required.", "danger")
+        return
+      }
+      fetch("/doctor/complete/" + this.activeAppt.id, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(this.treatment)
+      })
+      .then(r => r.json())
+      .then(d => {
+        showToast(d.msg, d.msg && (d.msg.toLowerCase().includes('error') || d.msg.toLowerCase().includes('fail') || d.msg.toLowerCase().includes('invalid')) ? 'danger' : 'success')
+        this.showComplete = false
+        this.loadDashboard()
+        this.loadAllAppts()
+      })
+    },
+
+    cancelAppt(id) {
+      if (!confirm("Cancel this appointment?")) return
+      fetch("/doctor/cancel/" + id, { method: "POST" })
+        .then(r => r.json())
+        .then(d => {
+          showToast(d.msg, d.msg && (d.msg.toLowerCase().includes('error') || d.msg.toLowerCase().includes('fail') || d.msg.toLowerCase().includes('invalid')) ? 'danger' : 'success')
+          this.loadDashboard()
+          this.loadAllAppts()
+        })
+    },
+
+    viewHistory(patientId, patientName) {
+      this.historyPatientName = patientName
+      fetch("/doctor/patient_history/" + patientId)
+        .then(r => r.json())
+        .then(d => { this.history = d })
+    },
+
+    addSlot() {
+      this.newSlots.push({ date: this.today, start: "09:00", end: "17:00" })
+    },
+
+    removeSlot(i) {
+      this.newSlots.splice(i, 1)
+    },
+
+    saveAvailability() {
+      if (this.newSlots.length === 0) {
+        showToast("Add at least one slot.", "success")
+        return
+      }
+      fetch("/doctor/availability", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctor_id: this.docId, slots: this.newSlots })
+      })
+      .then(r => r.json())
+      .then(d => {
+        showToast(d.msg, d.msg && (d.msg.toLowerCase().includes('error') || d.msg.toLowerCase().includes('fail') || d.msg.toLowerCase().includes('invalid')) ? 'danger' : 'success')
+        this.showAvailability = false
+        this.newSlots = []
+        this.loadAvailability()
+      })
+    },
+
+    statusBadge(status) {
+      return {
+        "bg-warning text-dark": status === "booked",
+        "bg-success":           status === "completed",
+        "bg-danger":            status === "cancelled",
+      }
+    },
+
+    logout() {
+      localStorage.clear()
+      window.location.href = "/"
+    }
+  }
+})
+</script>
+
+<script src="/static/js/toast.js"></script>
+</body>
+</html>
